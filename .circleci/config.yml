@@ -1,0 +1,114 @@
+version: 2.1
+
+jobs:
+  # ==========================================
+  # BUILD JOB - Compile and package
+  # ==========================================
+  build:
+    # Each job runs in its own container; OpenJDK 21 provides Java and Maven.
+    docker:
+      - image: cimg/openjdk:21.0
+    steps:
+      # Fetch the repository revision that triggered this pipeline.
+      - checkout
+      # Reuse downloaded Maven dependencies when pom.xml has not changed.
+      - restore_cache:
+          keys:
+            # The checksum gives each dependency set its own cache key.
+            - maven-deps-{{ checksum "pom.xml" }}
+            # Fall back to any prior Maven cache if there is no exact match.
+            - maven-deps-
+      - run:
+          name: Install dependencies and build
+          command: |
+            echo "Building the application..."
+            # clean removes old output; install compiles/packages and saves the artifact locally.
+            # Tests run in the separate test job below.
+            mvn clean install -DskipTests
+      # Save Maven's local dependency repository to speed up later jobs/pipelines.
+      - save_cache:
+          paths:
+            - ~/.m2
+          key: maven-deps-{{ checksum "pom.xml" }}
+      # Make the packaged JAR available to later jobs in this same workflow.
+      - persist_to_workspace:
+          root: .
+          paths:
+            - target/*.jar
+
+  # ==========================================
+  # TEST JOB - Run automated tests
+  # ==========================================
+  test:
+    docker:
+      - image: cimg/openjdk:21.0
+    steps:
+      # Jobs get fresh containers, so check out the source again.
+      - checkout
+      # Restore dependencies cached by the build job or an earlier pipeline.
+      - restore_cache:
+          keys:
+            - maven-deps-{{ checksum "pom.xml" }}
+            - maven-deps-
+      - run:
+          name: Run tests
+          command: |
+            echo "Running tests..."
+            # Run the project's test phase; Maven writes Surefire reports under target/.
+            mvn test
+      # Let CircleCI display test counts and failures in its Tests view.
+      - store_test_results:
+          path: target/surefire-reports
+      # Keep the raw test reports downloadable as build artifacts too.
+      - store_artifacts:
+          path: target/surefire-reports
+
+  # ==========================================
+  # PUBLISH JOB - Build and push Docker image
+  # ==========================================
+  publish:
+    docker:
+      # This job needs Docker CLI tools, not a Java development image.
+      - image: cimg/base:stable
+    steps:
+      # Get the source tree so Docker can use the Dockerfile and application files.
+      - checkout
+      # Receive files saved by build, including the packaged JAR.
+      - attach_workspace:
+          at: .
+      # Provision a remote Docker engine for image build/push operations.
+      - setup_remote_docker
+      - run:
+          name: Build Docker image
+          command: |
+            echo "Building Docker image..."
+            # Tag the image with the Docker Hub account name and repository.
+            docker build -t $DOCKER_USERNAME/devops-demo:latest .
+      - run:
+          name: Push to Docker Hub
+          command: |
+            echo "Logging in to Docker Hub..."
+            # Read credentials from the docker-hub context; stdin avoids putting the token in command arguments.
+            echo $DOCKER_TOKEN | docker login -u $DOCKER_USERNAME --password-stdin
+            echo "Pushing image to Docker Hub..."
+            # Upload the image tagged above to Docker Hub.
+            docker push $DOCKER_USERNAME/devops-demo:latest
+
+# ==========================================
+# WORKFLOW - Run jobs in sequence
+# ==========================================
+workflows:
+  build_test_publish:
+    jobs:
+      # Start by compiling and packaging the application.
+      - build
+      - test:
+          # Do not begin tests until build has completed successfully.
+          requires:
+            - build
+      - publish:
+          # Supply Docker Hub credentials securely to this job.
+          context: docker-hub
+          # Publish only after both the build and test stages succeed (test depends on build).
+          requires:
+            - test
