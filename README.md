@@ -37,10 +37,11 @@ mvn spring-boot:run
 ```
 
 The app starts on [http://localhost:8080](http://localhost:8080) by default.
+CI/CD pipeline notifications are integrated with Discord webhooks.
 
 ## Hello endpoint
 
-`GET /hello` returns `DevOps demo - CI/CD is working!`:
+`GET /hello` returns `DevOps demo - AUTOMATED DEPLOYMENT WORKS! 🚀`:
 
 ```bash
 curl http://localhost:8080/hello
