@@ -38,6 +38,14 @@ mvn spring-boot:run
 
 The app starts on [http://localhost:8080](http://localhost:8080) by default.
 
+## Hello endpoint
+
+`GET /hello` returns `DevOps demo - CI/CD is working!`:
+
+```bash
+curl http://localhost:8080/hello
+```
+
 Alternatively, build a JAR and run it:
 
 ```bash
@@ -66,4 +74,3 @@ git checkout -b my-branch-name step-1-project-template
 ```
 
 This checks out the code exactly as it was at that tag and puts you on a new branch (`my-branch-name`) so you can make changes without affecting the tag or other branches.
-
