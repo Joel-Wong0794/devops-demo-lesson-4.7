@@ -26,7 +26,20 @@ jobs:
           root: .
           paths:
             - target/*.jar
-
+  # ==========================================
+  # SNYK_CODE JOB - Snyk Code: static analysis (SAST) of src/
+  # ==========================================
+  snyk_code:
+    docker:
+      - image: cimg/openjdk:21.0
+    steps:
+      - checkout
+      - snyk/scan:
+          command: code test
+          severity-threshold: high
+          cli-version: 1.1308.1
+          monitor-on-build: false
+          
   test:
     docker:
       - image: cimg/openjdk:21.0
@@ -95,9 +108,11 @@ jobs:
             echo "Railway is now pulling $DOCKER_USERNAME/devops-demo:latest from Docker Hub."
 
 workflows:
-  build_test_publish_deploy:
+  build_test_scan_publish_deploy:
     jobs:
       - build
+      - snyk_scan
+      - snyk_code
       - test:
           requires:
             - build
@@ -105,6 +120,8 @@ workflows:
           context: docker-hub
           requires:
             - test
+            - snyk_scan
+            - snyk_code
       - deploy:
           requires:
             - publish
